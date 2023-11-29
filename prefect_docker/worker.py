@@ -24,6 +24,7 @@ from typing import Any, Dict, Generator, List, Optional, Tuple
 import anyio.abc
 import docker
 import docker.errors
+import httpx
 import packaging.version
 import prefect
 from docker import DockerClient
@@ -113,8 +114,10 @@ class DockerWorkerJobConfiguration(BaseJobConfiguration):
         default=None,
         description="The image pull policy to use when pulling images.",
     )
-    credentials: Optional[DockerRegistryCredentials] = Field(
-        default=None, description="Docker registry credentials"
+    credentials_block_name: Optional[str] = Field(
+        default=None,
+        description="Docker registry credentials block name. "
+        "It must be stored in the Prefect Server",
     )
     networks: List[str] = Field(
         default_factory=list,
@@ -690,8 +693,23 @@ class DockerWorker(BaseWorker):
         Pull the image we're going to use to create the container.
         """
 
-        if configuration.credentials is not None:
-            configuration.credentials.login(docker_client)
+        if configuration.credentials_block_name is not None:
+            credentials = None
+            _name = configuration.credentials_block_name
+
+            try:
+                credentials = self._client.read_block_document_by_name(
+                    name=_name,
+                    block_type_slug=DockerRegistryCredentials.get_block_type_slug(),
+                )
+            except httpx.RequestError as e:
+                self._logger.debug(
+                    f"Could not fetch DockerRegistryCredentials named `{_name}`: {e};"
+                    "Pulling image without login..."
+                )
+
+            if isinstance(credentials, DockerRegistryCredentials):
+                credentials.login(docker_client)
 
         image, tag = parse_image_tag(configuration.image)
 
