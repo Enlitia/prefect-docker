@@ -543,7 +543,7 @@ class DockerWorker(BaseWorker):
         )
 
     async def _docker_login_with_credentials_block(
-        self, docker_client, credentials_block_name: str
+        self, docker_client: docker.DockerClient, credentials_block_name: str
     ):
         credentials: Optional[DockerRegistryCredentials] = None
 
@@ -557,7 +557,16 @@ class DockerWorker(BaseWorker):
             )
 
         if credentials is not None:
-            await credentials.login(docker_client)
+            docker_client.login(
+                username=credentials.username,
+                password=credentials.password.get_secret_value(),
+                registry=credentials.registry_url,
+                reauth=credentials.reauth,
+            )
+            # Ideally I would use the block's login method,
+            # but it assumes we are in a Prefect run context
+            # (it uses get_run_logger...)
+            # await credentials.login(docker_client)
 
     def _create_and_start_container(
         self, configuration: DockerWorkerJobConfiguration
