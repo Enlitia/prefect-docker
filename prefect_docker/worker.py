@@ -557,7 +557,8 @@ class DockerWorker(BaseWorker):
             )
 
         if credentials is not None:
-            docker_client.login(
+            await run_sync_in_worker_thread(
+                docker_client.login,
                 username=credentials.username,
                 password=credentials.password.get_secret_value(),
                 registry=credentials.registry_url,
