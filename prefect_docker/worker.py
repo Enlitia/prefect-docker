@@ -691,12 +691,7 @@ class DockerWorker(BaseWorker):
         """
 
         if configuration.credentials is not None:
-            docker_client.login(
-                username=configuration.credentials.username,
-                password=configuration.credentials.password,
-                registry=configuration.credentials.registry_url,
-                reauth=configuration.credentials.reauth,
-            )
+            configuration.credentials.login(docker_client)
 
         image, tag = parse_image_tag(configuration.image)
 
