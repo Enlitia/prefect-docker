@@ -548,7 +548,7 @@ class DockerWorker(BaseWorker):
         credentials: Optional[DockerRegistryCredentials] = None
 
         try:
-            credentials = DockerRegistryCredentials.load(
+            credentials = await DockerRegistryCredentials.load(
                 credentials_block_name, client=self._client
             )
         except ValueError:
