@@ -52,6 +52,8 @@ else:
 from slugify import slugify
 from typing_extensions import Literal
 
+from .credentials import DockerRegistryCredentials
+
 CONTAINER_LABELS = {
     "io.prefect.version": prefect.__version__,
 }
@@ -82,6 +84,7 @@ class DockerWorkerJobConfiguration(BaseJobConfiguration):
         image: The image reference of a container image to use for created jobs.
             If not set, the latest Prefect image will be used.
         image_pull_policy: The image pull policy to use when pulling images.
+        credentials: Docker registry credentials
         networks: Docker networks that created containers should be connected to.
         network_mode: The network mode for the created containers (e.g. host, bridge).
             If 'networks' is set, this cannot be set.
@@ -109,6 +112,9 @@ class DockerWorkerJobConfiguration(BaseJobConfiguration):
     image_pull_policy: Optional[Literal["IfNotPresent", "Always", "Never"]] = Field(
         default=None,
         description="The image pull policy to use when pulling images.",
+    )
+    credentials: Optional[DockerRegistryCredentials] = Field(
+        default=None, description="Docker registry credentials"
     )
     networks: List[str] = Field(
         default_factory=list,
@@ -683,6 +689,15 @@ class DockerWorker(BaseWorker):
         """
         Pull the image we're going to use to create the container.
         """
+
+        if configuration.credentials is not None:
+            docker_client.login(
+                username=configuration.credentials.username,
+                password=configuration.credentials.password,
+                registry=configuration.credentials.registry_url,
+                reauth=configuration.credentials.reauth,
+            )
+
         image, tag = parse_image_tag(configuration.image)
 
         return docker_client.images.pull(image, tag)
