@@ -561,7 +561,9 @@ class DockerWorker(BaseWorker):
                 "Skipped docker login"
             )
 
-        if isinstance(credentials, DockerRegistryCredentials):
+        self._logger.debug(f"Credentials block: {credentials}")
+
+        if credentials is not None:
             await credentials.login(docker_client)
 
     def _create_and_start_container(
