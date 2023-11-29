@@ -36,7 +36,10 @@ from prefect.exceptions import InfrastructureNotAvailable, InfrastructureNotFoun
 from prefect.server.schemas.core import Flow
 from prefect.server.schemas.responses import DeploymentResponse
 from prefect.settings import PREFECT_API_URL
-from prefect.utilities.asyncutils import run_sync_in_worker_thread
+from prefect.utilities.asyncutils import (
+    run_async_from_worker_thread,
+    run_sync_in_worker_thread,
+)
 from prefect.utilities.dockerutils import (
     format_outlier_version_name,
     get_prefect_image_name,
@@ -540,6 +543,27 @@ class DockerWorker(BaseWorker):
             privileged=configuration.privileged,
         )
 
+    async def _docker_login_with_credentials_block(
+        self, docker_client, credentials_block_name: str
+    ):
+        credentials = None
+
+        try:
+            credentials: DockerRegistryCredentials = (
+                await self._client.read_block_document_by_name(
+                    name=credentials_block_name,
+                    block_type_slug=DockerRegistryCredentials.get_block_type_slug(),
+                )
+            )
+        except httpx.RequestError as e:
+            self._logger.info(
+                f"Could not fetch block named `{credentials_block_name}`: {e};"
+                "Skipped docker login"
+            )
+
+        if isinstance(credentials, DockerRegistryCredentials):
+            await credentials.login(docker_client)
+
     def _create_and_start_container(
         self, configuration: DockerWorkerJobConfiguration
     ) -> Tuple["Container", Event]:
@@ -550,6 +574,17 @@ class DockerWorker(BaseWorker):
         )
 
         if self._should_pull_image(docker_client, configuration=configuration):
+            if configuration.credentials_block_name is not None:
+                self._logger.info(
+                    "Docker registry credentials block name is defined; "
+                    "Will try to login..."
+                )
+                run_async_from_worker_thread(
+                    self._docker_login_with_credentials_block,
+                    docker_client,
+                    configuration.credentials_block_name,
+                )
+
             self._logger.info(f"Pulling image {configuration.image!r}...")
             self._pull_image(docker_client, configuration)
 
@@ -692,24 +727,6 @@ class DockerWorker(BaseWorker):
         """
         Pull the image we're going to use to create the container.
         """
-
-        if configuration.credentials_block_name is not None:
-            credentials = None
-            _name = configuration.credentials_block_name
-
-            try:
-                credentials = self._client.read_block_document_by_name(
-                    name=_name,
-                    block_type_slug=DockerRegistryCredentials.get_block_type_slug(),
-                )
-            except httpx.RequestError as e:
-                self._logger.debug(
-                    f"Could not fetch DockerRegistryCredentials named `{_name}`: {e};"
-                    "Pulling image without login..."
-                )
-
-            if isinstance(credentials, DockerRegistryCredentials):
-                credentials.login(docker_client)
 
         image, tag = parse_image_tag(configuration.image)
 
