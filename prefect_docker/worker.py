@@ -574,6 +574,7 @@ class DockerWorker(BaseWorker):
         )
 
         if self._should_pull_image(docker_client, configuration=configuration):
+            self._logger.debug(f"Credentials block: {configuration.credentials_block_name}")
             if configuration.credentials_block_name is not None:
                 self._logger.info(
                     "Docker registry credentials block name is defined; "
