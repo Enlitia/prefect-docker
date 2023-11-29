@@ -24,7 +24,6 @@ from typing import Any, Dict, Generator, List, Optional, Tuple
 import anyio.abc
 import docker
 import docker.errors
-import httpx
 import packaging.version
 import prefect
 from docker import DockerClient
@@ -546,22 +545,16 @@ class DockerWorker(BaseWorker):
     async def _docker_login_with_credentials_block(
         self, docker_client, credentials_block_name: str
     ):
-        credentials = None
+        credentials: Optional[DockerRegistryCredentials] = None
 
         try:
-            credentials: DockerRegistryCredentials = (
-                await self._client.read_block_document_by_name(
-                    name=credentials_block_name,
-                    block_type_slug=DockerRegistryCredentials.get_block_type_slug(),
-                )
+            credentials = DockerRegistryCredentials.load(
+                credentials_block_name, client=self._client
             )
-        except httpx.RequestError as e:
+        except ValueError:
             self._logger.info(
-                f"Could not fetch block named `{credentials_block_name}`: {e};"
-                "Skipped docker login"
+                f"DockerRegistryCredentials named `{credentials_block_name}` not found"
             )
-
-        self._logger.debug(f"Credentials block: {credentials}")
 
         if credentials is not None:
             await credentials.login(docker_client)
@@ -576,7 +569,9 @@ class DockerWorker(BaseWorker):
         )
 
         if self._should_pull_image(docker_client, configuration=configuration):
-            self._logger.debug(f"Credentials block: {configuration.credentials_block_name}")
+            self._logger.debug(
+                f"Credentials block: {configuration.credentials_block_name}"
+            )
             if configuration.credentials_block_name is not None:
                 self._logger.info(
                     "Docker registry credentials block name is defined; "
